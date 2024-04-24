@@ -1,2 +1,2 @@
 # SFMLEngine
-A lightweight game engine based on SFML
+A lightweight c++ game engine library based on SFML
