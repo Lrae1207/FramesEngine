@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "Game.hpp"
+#include "Engine.hpp"
 
 double phys::distance2D(double x1, double y1, double x2, double y2) {
 	float dx = x2 - x1;
@@ -82,6 +82,31 @@ sf::Vector2f engine::vmath::utof(sf::Vector2u v1) {
 	return sf::Vector2f(v1.x, v1.y);
 };
 
+
+engine::Text::Text()
+{
+}
+
+engine::Text::~Text()
+{
+}
+
+engine::Text::Text(sf::Color col, sf::Vector2f pos, sf::Vector2f org, std::string text, int size, sf::Font* fontptr) { textString = text; position = pos; origin = org; type_id = 6; layer = 0; color = col; charSize = size; font = fontptr; }
+
+engine::ShapeComponent::ShapeComponent() {
+	type_id = 5;
+	parentObject = nullptr;
+
+	fillColor = sf::Color(255, 0, 255, 255);
+	outlineColor = sf::Color(0, 0, 0, 255);
+	outlineThickness = 0.0f;
+	rotationDegree = 0.0f;
+
+	vertices = {};
+
+	origin = sf::Vector2f(0.0f, 0.0f);
+}
+
 /* Default constructor and destructor for ShapeComponent */
 engine::ShapeComponent::ShapeComponent(engine::floatPolygon polygon, GameObject* obj) {
 	type_id = 5;
@@ -134,6 +159,16 @@ sf::ConvexShape engine::ShapeComponent::constructShape() {
 	return polygon;
 }
 
+engine::Transform::Transform() {
+	size = sf::Vector2f(1.0f, 1.0f);
+	position = sf::Vector2f(0.0f, 0.0f);
+	origin = sf::Vector2f(0.0f, 0.0f);
+	parentObject = nullptr;
+	rotationDegree = 0;
+	mass = 1;
+	calcInverseMass();
+}
+
 /* Default constructor for TransformComponent */
 engine::Transform::Transform(GameObject* obj) {
 	size = sf::Vector2f(1.0f, 1.0f);
@@ -148,12 +183,31 @@ engine::Transform::Transform(GameObject* obj) {
 	}
 }
 
+engine::Transform::~Transform() {}
+
+void engine::Transform::calcInverseMass()
+{
+	inverseMass = 1.0f / mass;
+}
+
+float engine::Transform::getMass()
+{
+	return mass;
+}
+
+float engine::Transform::getInverseMass()
+{
+	return inverseMass;
+}
+
 /* Sick one liners*/
 /* Get attribute functions */
 sf::Vector2f engine::Transform::getSize() { return size; };
 sf::Vector2f engine::Transform::getPosition() { return position; };
 sf::Vector2f engine::Transform::getOrigin() { return origin; };
-float engine::Transform::getRotation() { return rotationDegree; };
+float engine::Transform::getRotation() { return rotationDegree; }
+engine::GameObject* engine::Transform::getParent() { return parentObject; }
+
 
 /* Set attribute functions */
 void engine::Transform::setSize(sf::Vector2f newSize) { size = newSize; };
@@ -161,13 +215,19 @@ void engine::Transform::setPosition(sf::Vector2f newPosition) {
 	position = sf::Vector2f(newPosition.x, newPosition.y);
 };
 void engine::Transform::setOrigin(sf::Vector2f newOrigin) { origin = newOrigin; };
-void engine::Transform::setRotation(float newAngleDegree) { rotationDegree = newAngleDegree; };
+void engine::Transform::setRotation(float newAngleDegree) { rotationDegree = newAngleDegree; }
+void engine::Transform::setParent(GameObject* obj) { parentObject = obj; }
+void engine::Transform::setMass(float m) { mass = m; calcInverseMass(); }
+
 
 /* Add to attribute functions */
 void engine::Transform::addToSize(sf::Vector2f newSize) { size = size + newSize; };
 void engine::Transform::addToPosition(sf::Vector2f newPosition) { position = position + newPosition; };
 void engine::Transform::addToOrigin(sf::Vector2f newOrigin) { origin = origin + newOrigin; };
 void engine::Transform::addRotation(float newAngleDegree) { rotationDegree += newAngleDegree; };
+
+engine::GameManager::GameManager(Game* engine) { game = engine; }
+engine::GameManager::GameManager() { game = nullptr; }
 
 /* GameObject constructor and destructor */
 engine::GameObject::GameObject(Game* game) {
@@ -228,6 +288,10 @@ void engine::GameObject::destroy() {
 	delete this;
 }
 
+void engine::GameObject::setVisibility(bool v) { isVisible = v; }
+
+void engine::GameObject::setCollider(PolygonCollider* p) { if (collider != nullptr) { delete collider; } collider = p; }
+
 void engine::GameObject::makeCircle(bool isCircle) {
 	shape->isCircle = isCircle;
 	collider->setIsCircle(isCircle);
@@ -286,6 +350,7 @@ void engine::Game::init(float frameCap) {
 	window = new sf::RenderWindow(videoMode, "A game", sf::Style::Titlebar | sf::Style::Close);
 	window->setFramerateLimit(frameCap);
 
+	camera = Camera();
 	camera.transform = new Transform(nullptr); // this goes crazy
 	camera.transform->setPosition(sf::Vector2f(0, 0));
 	camera.transform->setSize(sf::Vector2f(window->getSize().x, window->getSize().y));
@@ -419,13 +484,23 @@ engine::Game::~Game() {
 	delete window;
 }
 
+bool engine::Game::isGameActive() { return isActive; }
+
 /*
 	Used for the external game loop to make sure the window isn't open
 */
 const bool engine::Game::windowActive() const {
 	return window->isOpen();
 }
+bool engine::Game::isPaused() { return paused; }
+sf::Vector2f engine::Game::getWindowSize() { return vmath::utof(window->getSize()); }
+float engine::Game::getTimescale() { return timeScale; }
+long long engine::Game::getElapsedTime() { return getTimens() - startTime; }
+long long engine::Game::getDeltaTime() { return currentTime - lastTime; }
 
+void engine::Game::setBackgroundBrightness(float brightness) { backgroundBrightness = brightness; }
+
+void engine::Game::setCamFocus(GameObject* obj) { camera.focus = obj; }
 
 // Update and render functions
 
@@ -522,7 +597,6 @@ void engine::Game::updateObjects(float deltaTime) {
 
 void engine::Game::stopScene() {
 	delete collisionManager;
-	for (EngineComponent* e : engineComponents) { delete e; }
 	for (PolygonCollider* c : colliders) { delete c; }
 	for (Renderable* r : renderableObjects) { dynamicDeleteRenderable(r); }
 	for (Renderable* r : uiRenderableObjects) { dynamicDeleteRenderable(r); }
@@ -846,15 +920,6 @@ void engine::Game::start() {
 		((void(*)())manager.start)();
 	}
 	isActive = true;
-	mainUpdateLoop();
-}
-
-void engine::Game::mainUpdateLoop() {
-	if (isActive) {
-		update(); // Fix timing later
-		render();
-		mainUpdateLoop();
-	}
 }
 
 std::vector<engine::Renderable*> engine::Game::sortRenderables(std::vector<Renderable*> renders) {
@@ -1129,6 +1194,17 @@ sf::Texture* engine::Game::loadTexture(std::string path) {
 	return nullptr;
 }
 
+engine::Collider::Collider() {}
+
+engine::PolygonCollider::PolygonCollider()
+{
+	vertices = {};
+	type_id = 4;
+	isCircle = false;
+	parentObject = nullptr;
+	updateExtrusion();
+}
+
 engine::PolygonCollider::PolygonCollider(engine::floatPolygon polygon, GameObject* obj) {
 	vertices = polygon;
 	type_id = 4;
@@ -1154,6 +1230,20 @@ engine::PolygonCollider::PolygonCollider(float radius, GameObject* obj) {
 	parentObject = obj;
 	vertices.push_back(sf::Vector2f(0, radius));
 }
+
+engine::PolygonCollider::~PolygonCollider() {}
+
+engine::GameObject* engine::PolygonCollider::getParent() { return parentObject; }
+void engine::PolygonCollider::setParent(GameObject* obj) { parentObject = obj; }
+
+engine::floatPolygon engine::PolygonCollider::getPolygon() { return vertices; }
+void engine::PolygonCollider::setPolygon(floatPolygon p) { vertices = p; }
+
+bool engine::PolygonCollider::shapeIsCircle() { return isCircle; }
+void engine::PolygonCollider::setIsCircle(bool setTo) { isCircle = setTo; }
+
+int engine::PolygonCollider::getPoints() { return circlePoints; }
+void engine::PolygonCollider::setPoints(int points) { circlePoints = points; }
 
 void engine::PolygonCollider::updateExtrusion() {
 	Rect newExtrusion;
@@ -1192,6 +1282,10 @@ bool engine::collisions::overlap1D(float a1, float a2, float b1, float b2) {
 engine::collisions::ColliderBound::ColliderBound(PolygonCollider* collider, float value) {
 	coord = value;
 	col = collider;
+}
+
+bool engine::collisions::ColliderBound::operator < (const engine::collisions::ColliderBound& other) const {
+	return (coord < other.coord);
 }
 
 /* Collisions */
@@ -1272,6 +1366,10 @@ engine::collisions::CollisionManager::CollisionManager() {
 
 }
 
+engine::collisions::CollisionManager::~CollisionManager()
+{
+}
+
 std::vector<engine::collisions::CollisionPair*> engine::collisions::CollisionManager::calculateCollisionPairs(std::vector<PolygonCollider*> colliders) {
 	return (computedCollisions = narrowSAT(broadSortAndSweep(colliders)));
 }
@@ -1347,4 +1445,38 @@ void engine::Particle::update() {
 
 void engine::Particle::deleteParticle() {
 	delete this;
+}
+
+engine::Transform* engine::Particle::getTransform() { return transform; }
+engine::ShapeComponent* engine::Particle::getShape() { return shape; }
+void engine::Particle::setDrag(float d) { drag = d; }
+
+engine::Texture::Texture(Transform* trans)
+{
+	type_id = 7; transform = trans;
+}
+
+engine::Texture::Texture(Transform* trans, std::string path)
+{
+	type_id = 7; texturePath = path; transform = trans;
+}
+
+std::string engine::Texture::getTexturePath()
+{
+	return texturePath;
+}
+
+engine::Transform* engine::Texture::getTransform()
+{
+	return transform;
+}
+
+void engine::Texture::setTexturePath(std::string path)
+{
+	texturePath = path;
+}
+
+void engine::Texture::setTransform(Transform* trans)
+{
+	transform = trans;
 }

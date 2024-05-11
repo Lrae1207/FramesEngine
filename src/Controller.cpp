@@ -3,6 +3,7 @@
 
 // Constructor and destructor
 Controller::Controller() {
+	mouseMoveHandler = nullptr;
 	// Initialize response functions here
 }
 

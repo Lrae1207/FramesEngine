@@ -1,9 +1,8 @@
 #pragma once
 
-#ifndef GAME_HPP
-
 //https://www.youtube.com/watch?v=3elKoMMuJBA
 
+#include "DllBase.hpp"
 #include "filesystem.hpp"
 #include "MACROS.hpp" // Makes key names easier
 #include "Controller.hpp" // Handler for user input
@@ -13,10 +12,6 @@
 #include <chrono> // Timestamps
 #include <cmath> // For vector math
 #include <algorithm> // For sort
-
-#ifndef PHYSICS_HPP
-#define PHYSICS_HPP
-#include <cmath>
 
 namespace phys {
 	const double PI = 3.1415926535;
@@ -30,24 +25,17 @@ namespace phys {
 	// Calculate object 1s speed of acceleration towards object 2
 	double calculateGravityAccel(double x1, double y1, double x2, double y2, double mass2);
 }
-#endif
 
 template <typename T>
-class sptr { // Smart Pointer
+class ENGINE_API sptr { // Smart Pointer
 private:
 	T* pointer; // pointer to person class
 public:
-	sptr() {
-		pointer = nullptr;
-	}
+	sptr() { pointer = nullptr; }
 
-	sptr(T* guardThis) {
-		pointer = guardThis;
-	}
+	sptr(T* guardThis) { pointer = guardThis; }
 
-	~sptr() {
-		delete pointer;
-	}
+	~sptr() { if (pointer) { delete pointer; } }
 
 	T& operator* () {
 		return *pointer;
@@ -64,12 +52,12 @@ namespace engine {
 	class Transform;
 	class Texture;
 
-	class GameManager {
+	class ENGINE_API GameManager {
 	private:
 		Game* game;
 	public:
-		GameManager() { game = nullptr; }
-		GameManager(Game* engine) { game = engine; }
+		GameManager();
+		GameManager(Game* engine);
 		void* start;
 		void* update;
 		void* physicsUpdate;
@@ -78,12 +66,7 @@ namespace engine {
 	// Aliases
 	using floatPolygon = std::vector<sf::Vector2f>;
 
-	class EngineComponent {
-	public:
-		int engine_index = 0;
-	};
-
-	enum renderable_id { none, particle, line, circle_collider, poly_collider, shape, text, texture };
+	enum ENGINE_API renderable_id { none, particle, line, circle_collider, poly_collider, shape, text, texture };
 
 	/* Objects that can be drawn by the engine */
 	class Renderable {
@@ -125,7 +108,7 @@ namespace engine {
 	floatPolygon rectToPolygon(Rect r);
 
 	/* Holds data for a line */
-	class Line : public Renderable {
+	class ENGINE_API Line : public Renderable {
 	public:
 		sf::Vector2f start;
 		sf::Vector2f end;
@@ -137,7 +120,7 @@ namespace engine {
 	};
 
 	/* Class for sf::Text construction */
-	class Text : public Renderable {
+	class ENGINE_API Text : public Renderable {
 	public:
 		sf::Vector2f position = sf::Vector2f(0.0f, 0.0f);
 		sf::Vector2f origin = sf::Vector2f(0.0f, 0.0f);
@@ -145,7 +128,9 @@ namespace engine {
 		std::string textString = "";
 		int charSize = 24;
 		sf::Font* font = nullptr;
-		Text(sf::Color col, sf::Vector2f pos, sf::Vector2f org, std::string text, int size, sf::Font* fontptr) { textString = text; position = pos; origin = org; type_id = 6; layer = 0; color = col; charSize = size; font = fontptr; }
+		Text();
+		~Text();
+		Text(sf::Color col, sf::Vector2f pos, sf::Vector2f org, std::string text, int size, sf::Font* fontptr);
 	};
 
 	// Vector mathmatical functions
@@ -173,36 +158,39 @@ namespace engine {
 
 	/* Collision */
 
-	class Collider : public Renderable, public EngineComponent {
+	class ENGINE_API Collider : public Renderable {
 	public:
+		Collider();
 		int layer = 0;
 		bool isCircle = false;
 		bool isOverlapped = false;
 		bool isRigid = false;
 	};
 
-	class PolygonCollider : public Collider, public EngineComponent {
+	class ENGINE_API PolygonCollider : public Collider {
 	private:
 		GameObject* parentObject;
 		bool isCircle;
 		int circlePoints = 100;
 		floatPolygon vertices = {};
 	public:
+		PolygonCollider();
 		PolygonCollider(floatPolygon polygon, GameObject* obj);
 		PolygonCollider(Rect r, GameObject* obj);
 		PolygonCollider(float radius, GameObject* obj);
+		~PolygonCollider();
 
-		GameObject* getParent() { return parentObject; }
-		void setParent(GameObject* obj) { parentObject = obj; }
+		GameObject* getParent();
+		void setParent(GameObject* obj);
 
-		floatPolygon getPolygon() { return vertices; }
-		void setPolygon(floatPolygon p) { vertices = p; }
+		floatPolygon getPolygon();
+		void setPolygon(floatPolygon p);
 
-		bool shapeIsCircle() { return isCircle; }
-		void setIsCircle(bool setTo) { isCircle = setTo; }
+		bool shapeIsCircle();
+		void setIsCircle(bool setTo);
 
-		int getPoints() { return circlePoints; }
-		void setPoints(int points) { circlePoints = points; }
+		int getPoints();
+		void setPoints(int points);
 
 		// top, bottom are lowest and highest y values respectively
 		// left, right are lowest and highest x values respectively
@@ -225,26 +213,24 @@ namespace engine {
 			float overlap = 0.0f;
 		};
 
-		class ColliderBound {
+		class ENGINE_API ColliderBound {
 		public:
 			float coord;
 			PolygonCollider* col;
 			ColliderBound(PolygonCollider* collider, float value);
-
-			bool operator < (const ColliderBound& other) const {
-				return (coord < other.coord);
-			}
+			bool operator < (const engine::collisions::ColliderBound& other) const;
 		};
 
 		// Algorithms
 		std::vector<CollisionPair*> broadSortAndSweep(std::vector<PolygonCollider*> colliders);
 		std::vector<CollisionPair*> narrowSAT(std::vector<CollisionPair*> pairs);
 
-		class CollisionManager : public EngineComponent {
+		class ENGINE_API CollisionManager {
 		private:
 			std::vector<CollisionPair*> computedCollisions = {};
 		public:
 			CollisionManager();
+			~CollisionManager();
 			std::vector<CollisionPair*> calculateCollisionPairs(std::vector<PolygonCollider*> colliders);
 			void handleCollisions(std::vector<PolygonCollider*> colliders);
 		};
@@ -253,7 +239,7 @@ namespace engine {
 	/*
 		Class representing the shape to be rendered on an object
 	*/
-	class ShapeComponent : public Renderable, public EngineComponent {
+	class ENGINE_API ShapeComponent : public Renderable {
 	public:
 		GameObject* parentObject;
 		floatPolygon vertices = {}; // y of index 1 represents radius of circle
@@ -271,6 +257,7 @@ namespace engine {
 		Texture* texture;
 
 		/* Constructor and destructor */
+		ShapeComponent();
 		ShapeComponent(floatPolygon polygon, GameObject* obj);
 		ShapeComponent(float radius, GameObject* obj);
 		~ShapeComponent();
@@ -282,22 +269,22 @@ namespace engine {
 	/*
 		No clue why I made this. I will probably use this for an image texture holder.
 	*/
-	class Texture : public Renderable, public EngineComponent {
+	class ENGINE_API Texture : public Renderable {
 	private:
 		Transform* transform;
 		std::string texturePath;
 	public:
 		// Constructors and destructors
-		Texture(Transform* trans) { type_id = 7; transform = trans; }
-		Texture(Transform* trans, std::string path) { type_id = 7; texturePath = path; transform = trans; };
+		Texture(Transform* trans);
+		Texture(Transform* trans, std::string path);
 
 		/* Get functions */
-		std::string getTexturePath() { return texturePath; };
-		Transform* getTransform() { return transform; }
+		std::string getTexturePath();
+		Transform* getTransform();
 
 		/* Set functions */
-		void setTexturePath(std::string path) { texturePath = path; }
-		void setTransform(Transform* trans) { transform = trans; }
+		void setTexturePath(std::string path);
+		void setTransform(Transform* trans);
 	};
 
 	struct Force {
@@ -307,7 +294,7 @@ namespace engine {
 	/*
 		A class containing information on positioning and scale
 	*/
-	class Transform : public EngineComponent {
+	class ENGINE_API Transform {
 	private:
 		/* Physics properties */
 		float mass;
@@ -328,28 +315,30 @@ namespace engine {
 		std::vector<Force> actingForces;
 
 		// Constructors and destructors
+		Transform();
 		Transform(GameObject* obj);
+		~Transform();
 
 		/* Mass */
-		void calcInverseMass() { inverseMass = 1.0f / mass; }
+		void calcInverseMass();
 
 		/* Sick one liners*/
 		/* Get attribute functions */
-		float getMass() { return mass; }
-		float getInverseMass() { return inverseMass; }
+		float getMass();
+		float getInverseMass();
 		sf::Vector2f getSize();
 		sf::Vector2f getPosition();
 		sf::Vector2f getOrigin();
 		float getRotation();
-		GameObject* getParent() { return parentObject; }
+		GameObject* getParent();
 
 		/* Set attribute functions */
-		void setMass(float m) { mass = m; calcInverseMass(); }
+		void setMass(float m);
 		void setSize(sf::Vector2f newSize);
 		void setPosition(sf::Vector2f newPosition);
 		void setOrigin(sf::Vector2f newOrigin);
 		void setRotation(float newAngleDegree);
-		void setParent(GameObject* obj) { parentObject = obj; }
+		void setParent(GameObject* obj);
 
 		/* Add to attribute functions */
 		void addToSize(sf::Vector2f newSize);
@@ -361,7 +350,7 @@ namespace engine {
 	/*
 		Game Object for use within the engine
 	*/
-	class GameObject : public EngineComponent {
+	class ENGINE_API GameObject {
 	private:
 		PolygonCollider* collider;
 		Transform* transform;
@@ -389,8 +378,8 @@ namespace engine {
 		Transform* getTransform();
 
 		/* Set functions */
-		void setVisibility(bool v) { isVisible = v; }
-		void setCollider(PolygonCollider* p) { if (collider != nullptr) { delete collider; } collider = p; }
+		void setVisibility(bool v);
+		void setCollider(PolygonCollider* p);
 		void makeCircle(bool isCircle);
 
 		/* Misc functions */
@@ -399,7 +388,8 @@ namespace engine {
 		void removeShapeComponent();
 	};
 
-	struct Camera : public EngineComponent {
+	class ENGINE_API Camera {
+	public:
 		Transform* transform;
 		GameObject* focus;
 	};
@@ -409,7 +399,7 @@ namespace engine {
 	/*
 		Game Engine - contains all the functions and data for a functioning engine
 	*/
-	class Game {
+	class ENGINE_API Game {
 	private:
 		/* Clocking and timing */
 		bool isActive = false;
@@ -443,7 +433,6 @@ namespace engine {
 		collisions::CollisionManager* collisionManager = nullptr;
 
 		// Buffers
-		std::vector<EngineComponent*> engineComponents = { nullptr };
 		std::vector<PolygonCollider*> colliders = {};
 		std::vector<Renderable*> renderableObjects = {};
 		std::vector<Renderable*> uiRenderableObjects = {};
@@ -463,21 +452,21 @@ namespace engine {
 		virtual ~Game();
 
 		// Accessors
-		bool isGameActive() { return isActive; }
+		bool isGameActive();
 		const bool windowActive() const;
-		bool isPaused() { return paused; }
-		sf::Vector2f getWindowSize() { return vmath::utof(window->getSize()); }
+		bool isPaused();
+		sf::Vector2f getWindowSize();
 
 		// Time Accessors
-		float getTimescale() { return timeScale; }
-		long long getElapsedTime() { return getTimens() - startTime; }
-		long long getDeltaTime() { return currentTime - lastTime; }
+		float getTimescale();
+		long long getElapsedTime();
+		long long getDeltaTime();
 
 		// Get and set
-		void setBackgroundBrightness(float brightness) { backgroundBrightness = brightness; }
+		void setBackgroundBrightness(float brightness);
 
 		// Camera functions
-		void setCamFocus(GameObject* obj) { camera.focus = obj; }
+		void setCamFocus(GameObject* obj);
 
 		// Game update and render functions
 		void update();
@@ -486,7 +475,6 @@ namespace engine {
 		void resetScene();
 		void render();
 		void start();
-		void mainUpdateLoop();
 
 		void dynamicDeleteRenderable(Renderable* r);
 
@@ -535,7 +523,7 @@ namespace engine {
 	};
 
 
-	class Particle : Renderable {
+	class ENGINE_API Particle : Renderable {
 	private:
 		Transform* transform;
 		ShapeComponent* shape;
@@ -551,12 +539,11 @@ namespace engine {
 		void stopRendering();
 		void deleteParticle();
 
-		Transform* getTransform() { return transform; }
-		ShapeComponent* getShape() { return shape; }
+		Transform* getTransform();
+		ShapeComponent* getShape();
 
-		void setDrag(float d) { drag = d; }
+		void setDrag(float d);
 
 		void update();
 	};
 }
-#endif

@@ -31,6 +31,14 @@ void filesystem::Parser::initReader(std::string path, Filetype mode) {
 	}
 }
 
+filesystem::Parser::Parser()
+{
+}
+
+filesystem::Parser::~Parser()
+{
+}
+
 filesystem::Parser::Parser(std::string file, Filetype type) {
 	initReader(file, type);
 }

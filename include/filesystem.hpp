@@ -7,7 +7,7 @@
 #include <fstream> // Manual file reading
 #include <iostream> // std::cout
 #include <vector> // for arrays
-#include "nlohmann/json.hpp"// json parsing
+#include "nlohmann/json.hpp" // run vs as admin
 #include "SFML/Graphics.hpp"
 #include "SFML/System.hpp"
 
