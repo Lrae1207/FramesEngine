@@ -18,7 +18,7 @@ int main() {
  
 	return 0;
 }
-``
+```
 
 # Contribution
 As of right now, any help is appreciated so go ahead and report any errors and make a pull request for me to review if you have any additions.
