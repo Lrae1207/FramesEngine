@@ -58,9 +58,6 @@ namespace engine {
 	public:
 		GameManager();
 		GameManager(Game* engine);
-		void* start;
-		void* update;
-		void* physicsUpdate;
 	};
 
 	// Aliases
@@ -357,6 +354,9 @@ namespace engine {
 		ShapeComponent* shape;
 		bool isVisible = true;
 		Game* engine;
+		void* startFunction;
+		void* updateFunction;
+		void* physicsUpdateFunction;
 	public:
 		GameObject* parent = nullptr;
 		std::string objName = "default";
@@ -376,11 +376,17 @@ namespace engine {
 		PolygonCollider* getCollider();
 		ShapeComponent* getShapeComponent();
 		Transform* getTransform();
+		void* getStartFunction();
+		void* getUpdateFunction();
+		void* getPhysicsUpdateFunction();
 
 		/* Set functions */
 		void setVisibility(bool v);
 		void setCollider(PolygonCollider* p);
 		void makeCircle(bool isCircle);
+		void setStartFunction(void* f);
+		void setUpdateFunction(void* f);
+		void setPhysicsUpdateFunction(void* f);
 
 		/* Misc functions */
 		void updateCollider();
@@ -475,6 +481,9 @@ namespace engine {
 		void resetScene();
 		void render();
 		void start();
+
+		void invoke(void* func);
+		void invokeObjFunction(void* func, GameObject* obj);
 
 		void dynamicDeleteRenderable(Renderable* r);
 

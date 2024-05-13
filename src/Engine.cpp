@@ -236,7 +236,11 @@ engine::GameObject::GameObject(Game* game) {
 	shape = new ShapeComponent({ sf::Vector2f(0,0),sf::Vector2f(100,0),sf::Vector2f(100,100) }, this);
 	transform = new Transform(this);
 	collider = new PolygonCollider({ sf::Vector2f(0,0),sf::Vector2f(100,0),sf::Vector2f(100,100) }, this);
-	setVisibility(false);
+	startFunction = nullptr;
+	updateFunction = nullptr;
+	physicsUpdateFunction = nullptr;
+	setVisibility(true);
+	game->drawShape(shape, false);
 }
 
 /* GameObject constructor and destructor */
@@ -246,6 +250,10 @@ engine::GameObject::GameObject(engine::floatPolygon polygon, Game* game) {
 	shape = new ShapeComponent(polygon, this);
 	transform = new Transform(this);
 	collider = new PolygonCollider(polygon, this);
+	startFunction = nullptr;
+	updateFunction = nullptr;
+	physicsUpdateFunction = nullptr;
+	game->drawShape(shape, false);
 }
 
 /* GameObject constructor and destructor */
@@ -255,6 +263,10 @@ engine::GameObject::GameObject(PolygonCollider* col, Game* game) {
 	transform = new Transform(this);
 	shape = new ShapeComponent({ sf::Vector2f(0,0),sf::Vector2f(100,0),sf::Vector2f(100,100) }, this);
 	collider = col;
+	startFunction = nullptr;
+	updateFunction = nullptr;
+	physicsUpdateFunction = nullptr;
+	game->drawShape(shape, false);
 }
 
 /* GameObject constructor and destructor */
@@ -264,6 +276,10 @@ engine::GameObject::GameObject(engine::floatPolygon polygon, PolygonCollider* co
 	transform = new Transform(this);
 	shape = new ShapeComponent(polygon, this);
 	collider = col;
+	startFunction = nullptr;
+	updateFunction = nullptr;
+	physicsUpdateFunction = nullptr;
+	game->drawShape(shape,false);
 }
 
 engine::GameObject::GameObject(float radius, float colliderRadius, Game* game) {
@@ -274,6 +290,10 @@ engine::GameObject::GameObject(float radius, float colliderRadius, Game* game) {
 	collider = new PolygonCollider(colliderRadius, this);
 	shape->isCircle = true;
 	collider->setIsCircle(true);
+	startFunction = nullptr;
+	updateFunction = nullptr;
+	physicsUpdateFunction = nullptr;
+	game->drawShape(shape, false);
 }
 
 
@@ -289,13 +309,14 @@ void engine::GameObject::destroy() {
 }
 
 void engine::GameObject::setVisibility(bool v) { isVisible = v; }
-
 void engine::GameObject::setCollider(PolygonCollider* p) { if (collider != nullptr) { delete collider; } collider = p; }
-
 void engine::GameObject::makeCircle(bool isCircle) {
 	shape->isCircle = isCircle;
 	collider->setIsCircle(isCircle);
 }
+void engine::GameObject::setStartFunction(void* f) { startFunction = f; }
+void engine::GameObject::setUpdateFunction(void* f) { updateFunction = f; }
+void engine::GameObject::setPhysicsUpdateFunction(void* f) { physicsUpdateFunction = f; }
 
 /* Public class functions */
 
@@ -328,13 +349,10 @@ void engine::GameObject::removeShapeComponent() {
 	shape = nullptr;
 }
 
-/*
-	return Transform
-	Returns the Transform
-*/
-engine::Transform* engine::GameObject::getTransform() {
-	return transform;
-}
+engine::Transform* engine::GameObject::getTransform() {return transform;}
+void* engine::GameObject::getStartFunction() { return startFunction; }
+void* engine::GameObject::getUpdateFunction() { return updateFunction; }
+void* engine::GameObject::getPhysicsUpdateFunction() { return physicsUpdateFunction; }
 
 /*
 	return void
@@ -536,8 +554,7 @@ void engine::Game::update() {
 		showColliders = !showColliders;
 		f1Held = true;
 		debugLog("debugMode : " + boolToString(showColliders), LOG_CYAN);
-	}
-	else if (!controller.getKeyDown(KEYCODEF1)) {
+	} else if (!controller.getKeyDown(KEYCODEF1)) {
 		f1Held = false;
 	}
 
@@ -545,15 +562,14 @@ void engine::Game::update() {
 		paused = !paused;
 		escHeld = true;
 		debugLog("paused : " + boolToString(paused), LOG_CYAN);
-	}
-	else if (!controller.getKeyDown(KEYCODEESC)) {
+	} else if (!controller.getKeyDown(KEYCODEESC)) {
 		escHeld = false;
 	}
 
 	// Update camera
 	sf::Vector2f offset = getWindowSize() / 2.0f;
 	if (camera.focus != nullptr) {
-		camera.transform->setPosition(vmath::subtractVectors(camera.focus->getTransform()->position, offset));
+		//camera.transform->setPosition(vmath::subtractVectors(camera.focus->getTransform()->position, offset));
 	}
 
 
@@ -573,9 +589,11 @@ void engine::Game::updateObjects(float deltaTime) {
 	for (GameObject* obj : gameObjects) {
 		/* Properties of the object */
 		Transform* t = obj->getTransform();
-		if (!t->isPhysical) { continue; }
+		if (t == nullptr || !t->isPhysical) {continue;}
 		ShapeComponent* c = obj->getShapeComponent();
+		if (c == nullptr) { continue; }
 		PolygonCollider* p = obj->getCollider();
+		if (p == nullptr) { continue; }
 
 		/* Calculate net acceleration*/
 		sf::Vector2f acceleration = sf::Vector2f(0, 0);
@@ -588,9 +606,9 @@ void engine::Game::updateObjects(float deltaTime) {
 		t->velocity += acceleration;// * deltaTime;
 		t->position += t->velocity;// * deltaTime;
 
-		/* Call update functions */
-		if (manager.physicsUpdate != nullptr) {
-			((void(*)())manager.physicsUpdate)();
+		/* Call update function */
+		if (obj->getPhysicsUpdateFunction() != nullptr) {
+			invokeObjFunction(obj->getPhysicsUpdateFunction(), obj);
 		}
 	}
 }
@@ -638,9 +656,11 @@ void engine::Game::dynamicDeleteRenderable(Renderable* r) {
 	- Writes changes to the window
 */
 void engine::Game::render() {
-	/* Call update functions */
-	if (manager.update != nullptr) {
-		((void(*)())manager.update)();
+	for (GameObject* obj : gameObjects) {
+		/* Call update function */
+		if (obj->getUpdateFunction() != nullptr) {
+			invokeObjFunction(obj->getUpdateFunction(), obj);
+		}
 	}
 
 	// Clear the screen with this color as argument
@@ -916,10 +936,19 @@ void engine::Game::render() {
 
 void engine::Game::start() {
 	/* Call start functions */
-	if (manager.start != nullptr) {
-		((void(*)())manager.start)();
+	for (GameObject *obj : gameObjects) {
+		if (obj->getStartFunction() != nullptr) {
+			invokeObjFunction(obj->getStartFunction(),obj);
+		}
 	}
 	isActive = true;
+}
+
+void engine::Game::invoke(void* func) {
+	((void(*)())func)();
+}
+void engine::Game::invokeObjFunction(void* func, GameObject* obj) {
+	((void(*)(GameObject*))func)(obj);
 }
 
 std::vector<engine::Renderable*> engine::Game::sortRenderables(std::vector<Renderable*> renders) {
