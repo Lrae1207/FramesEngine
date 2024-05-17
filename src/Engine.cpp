@@ -1,16 +1,6 @@
 #include "pch.h"
 #include "Engine.hpp"
 
-double phys::distance2D(double x1, double y1, double x2, double y2) {
-	float dx = x2 - x1;
-	float dy = y2 - y1;
-	float d = sqrtf(dx * dx + dy * dy);
-	return d;
-}
-double phys::calculateGravityAccel(double x1, double y1, double x2, double y2, double mass2) {
-	return GGRAM * GRAVITY_CONSTANT * mass2 / distance2D(x1, y1, x2, y2);
-}
-
 /* Get the timestamp in nanoseconds */
 long long engine::getTimens() {
 	return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -59,7 +49,7 @@ sf::Vector2f engine::vmath::addVectors(sf::Vector2f v1, sf::Vector2f v2) {
 
 sf::Vector2f engine::vmath::rotateByDegrees(sf::Vector2f vector, float degrees) {
 	sf::Vector2f returnVector;
-	degrees *= phys::DEGTORAD;
+	degrees *= physics::DEGTORAD;
 	returnVector.x = vector.x * cosf(degrees) - vector.y * sinf(degrees);
 	returnVector.y = vector.x * sinf(degrees) + vector.y * cosf(degrees);
 	return returnVector;
@@ -514,7 +504,6 @@ bool engine::Game::isPaused() { return paused; }
 sf::Vector2f engine::Game::getWindowSize() { return vmath::utof(window->getSize()); }
 float engine::Game::getTimescale() { return timeScale; }
 long long engine::Game::getElapsedTime() { return getTimens() - startTime; }
-long long engine::Game::getDeltaTime() { return currentTime - lastTime; }
 
 void engine::Game::setBackgroundBrightness(float brightness) { backgroundBrightness = brightness; }
 
@@ -528,8 +517,12 @@ void engine::Game::setCamFocus(GameObject* obj) { camera.focus = obj; }
 	- Handles events (such as keypresses)
 */
 void engine::Game::update() {
-	lastTime = currentTime;
-	currentTime = getTimens();
+	// If a sufficient amount of time hasn't elapsed yet
+	long long timestamp;
+	if ((timestamp = getTimens() - lastPhysicsUpdate) < invPhysUPS * powf(10, 9)) {
+		return;
+	}
+	lastPhysicsUpdate = timestamp;
 
 	/* Event polling */
 	while (window->pollEvent(event)) {
@@ -656,12 +649,20 @@ void engine::Game::dynamicDeleteRenderable(Renderable* r) {
 	- Writes changes to the window
 */
 void engine::Game::render() {
+	// If a sufficient amount of time hasn't elapsed yet
+	long long timestamp;
+	if ((timestamp = getTimens() - lastUpdate) < invFPS * powf(10,9)) {
+		return;
+	}
+	lastUpdate = timestamp;
+
 	for (GameObject* obj : gameObjects) {
 		/* Call update function */
 		if (obj->getUpdateFunction() != nullptr) {
 			invokeObjFunction(obj->getUpdateFunction(), obj);
 		}
 	}
+
 
 	// Clear the screen with this color as argument
 	window->clear(sf::Color(100 * backgroundBrightness, 150 * backgroundBrightness, 255 * backgroundBrightness, 255));
@@ -703,7 +704,7 @@ void engine::Game::render() {
 			lineDir = vmath::subtractVectors(line->end, line->start);
 
 			// Rotate to proper position
-			drawLine.rotate(phys::RADTODEG * atan2f(lineDir.y, lineDir.x) - 90.0f);
+			drawLine.rotate(physics::RADTODEG * atan2f(lineDir.y, lineDir.x) - 90.0f);
 
 			window->draw(drawLine); // Draw
 			break;
@@ -803,7 +804,7 @@ void engine::Game::render() {
 			lineDir = vmath::subtractVectors(line->end, line->start);
 
 			// Rotate to proper position
-			drawLine.rotate(phys::RADTODEG * atan2f(lineDir.y, lineDir.x));
+			drawLine.rotate(physics::RADTODEG * atan2f(lineDir.y, lineDir.x));
 
 			window->draw(drawLine); // Draw
 			break;
@@ -1435,6 +1436,24 @@ void engine::collisions::CollisionManager::handleCollisions(std::vector<PolygonC
 	}
 }
 
+double engine::physics::distance2D(double x1, double y1, double x2, double y2) {
+	float dx = x2 - x1;
+	float dy = y2 - y1;
+	float d = sqrtf(dx * dx + dy * dy);
+	return d;
+}
+
+double engine::physics::distance2D(sf::Vector2f v1, sf::Vector2f v2) {
+	float dx = v2.x - v1.x;
+	float dy = v2.y - v1.y;
+	float d = sqrtf(dx * dx + dy * dy);
+	return d;
+}
+
+engine::physics::PhysicsManager::PhysicsManager() {
+	gravityDirection = sf::Vector2f(0.0,1.0);
+	gravityScale = 1;
+}
 
 sf::Color engine::changeAlpha(sf::Color color, int alpha) {
 	return sf::Color(color.r, color.g, color.b, alpha);
@@ -1466,7 +1485,7 @@ engine::Particle::Particle(Game* engine, sf::Vector2f v) {
 }
 
 void engine::Particle::update() {
-	lifeTime += game->getDeltaTime();
+	//lifeTime += game->getDeltaTime();
 
 	velocity = vmath::multiplyVector(velocity, drag);
 	transform->addToPosition(velocity);

@@ -13,19 +13,6 @@
 #include <cmath> // For vector math
 #include <algorithm> // For sort
 
-namespace phys {
-	const double PI = 3.1415926535;
-	const double RADTODEG = 180.0f / PI;
-	const double DEGTORAD = PI / 180.0f;
-	const double GRAVITY_CONSTANT = 6.6743f * pow(10, -11);
-	const double GGRAM = pow(10, 9); // gigagram 10^9
-
-	double distance2D(double x1, double y1, double x2, double y2);
-
-	// Calculate object 1s speed of acceleration towards object 2
-	double calculateGravityAccel(double x1, double y1, double x2, double y2, double mass2);
-}
-
 template <typename T>
 class ENGINE_API sptr { // Smart Pointer
 private:
@@ -233,6 +220,25 @@ namespace engine {
 		};
 	}
 
+	namespace physics {
+		const double PI = 3.1415926535;
+		const double TWOPI = PI * 2;
+		const double RADTODEG = 180.0f / PI;
+		const double DEGTORAD = PI / 180.0f;
+
+
+		ENGINE_API double distance2D(double x1, double y1, double x2, double y2);
+		ENGINE_API double distance2D(sf::Vector2f v1, sf::Vector2f v2);
+
+		class ENGINE_API PhysicsManager {
+		private:
+			sf::Vector2f gravityDirection;
+			float gravityScale;
+		public:
+			PhysicsManager();
+		};
+	}
+
 	/*
 		Class representing the shape to be rendered on an object
 	*/
@@ -411,7 +417,9 @@ namespace engine {
 		bool isActive = false;
 		long long tick = 0;
 		long long currentTime;
-		long long lastTime;
+		long long lastTime = 0;
+		long long lastUpdate = 0;
+		long long lastPhysicsUpdate = 0;
 		long long startTime;
 		float timeScale;
 
@@ -466,7 +474,7 @@ namespace engine {
 		// Time Accessors
 		float getTimescale();
 		long long getElapsedTime();
-		long long getDeltaTime();
+		//long long getDeltaTime();
 
 		// Get and set
 		void setBackgroundBrightness(float brightness);
