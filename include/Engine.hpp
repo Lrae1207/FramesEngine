@@ -237,6 +237,8 @@ namespace engine {
 		public:
 			PhysicsManager();
 		};
+
+		ENGINE_API sf::Vector2f normalizeVector(sf::Vector2f v);
 	}
 
 	/*
@@ -292,6 +294,7 @@ namespace engine {
 
 	struct Force {
 		sf::Vector2f vector; /* position displacement on an object of mass 1 */
+		bool persistent = true; /* is it not deleted after being applied */
 	};
 
 	/*
@@ -408,6 +411,12 @@ namespace engine {
 
 	class Particle;
 
+	struct PhysicsSettings {
+		sf::Vector2f gravityDir = physics::normalizeVector(sf::Vector2f(0,1));
+		float gravitySpeed = 1.0f;
+		float drag = 0.01f;
+	};
+
 	/*
 		Game Engine - contains all the functions and data for a functioning engine
 	*/
@@ -421,6 +430,8 @@ namespace engine {
 		long long lastUpdate = 0;
 		long long lastPhysicsUpdate = 0;
 		long long startTime;
+		int frame = 0;
+		long long lastSecond = 0;
 		float timeScale;
 
 		float maxFPS;
@@ -460,6 +471,7 @@ namespace engine {
 	public:
 		sf::RenderWindow* window;
 		GameManager manager;
+		PhysicsSettings physicsSettings;
 
 		// Constructors
 		Game(float fps, float ups);

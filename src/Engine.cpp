@@ -519,10 +519,10 @@ void engine::Game::setCamFocus(GameObject* obj) { camera.focus = obj; }
 void engine::Game::update() {
 	// If a sufficient amount of time hasn't elapsed yet
 	long long timestamp;
-	if ((timestamp = getTimens() - lastPhysicsUpdate) < invPhysUPS * powf(10, 9)) {
+	if ((timestamp = getTimens() - lastPhysicsUpdate) < invPhysUPS * 1000000000) {
 		return;
 	}
-	lastPhysicsUpdate = timestamp;
+	lastPhysicsUpdate = getTimens();
 
 	/* Event polling */
 	while (window->pollEvent(event)) {
@@ -590,13 +590,33 @@ void engine::Game::updateObjects(float deltaTime) {
 
 		/* Calculate net acceleration*/
 		sf::Vector2f acceleration = sf::Vector2f(0, 0);
-		for (Force f : t->actingForces) {
+		for (int i = t->actingForces.size()-1; i >= 0; i--) {
+			Force f = t->actingForces[i];
 			acceleration += f.vector;
+			if (!f.persistent) {
+				t->actingForces.erase(t->actingForces.begin() + i);
+			}
+		}
+
+		/* Gravity and other physics */
+		if (t->isPhysical) {
+			acceleration += physicsSettings.gravityDir * physicsSettings.gravitySpeed; // gravity
 		}
 
 		/* Semi-implicit euler integration */
 		acceleration *= t->getInverseMass(); // Make sure mass is never 0
 		t->velocity += acceleration;// * deltaTime;
+		debugLog(std::to_string(t->velocity.y) + ";" + std::to_string(t->velocity.y), LOG_BLUE);
+
+		if (t->isPhysical) {
+			sf::Vector2f dragForce = t->velocity * -1.0f;
+			float dragCoef = (float)physics::distance2D(sf::Vector2f(0, 0), t->velocity); // magnitude
+			dragCoef *= dragCoef;
+			dragForce *= dragCoef * physicsSettings.drag;
+			t->velocity += dragForce; // calculate drag last
+			debugLog(std::to_string(dragForce.x) + ";" + std::to_string(dragForce.y), LOG_BLUE);
+		}
+
 		t->position += t->velocity;// * deltaTime;
 
 		/* Call update function */
@@ -651,10 +671,17 @@ void engine::Game::dynamicDeleteRenderable(Renderable* r) {
 void engine::Game::render() {
 	// If a sufficient amount of time hasn't elapsed yet
 	long long timestamp;
-	if ((timestamp = getTimens() - lastUpdate) < invFPS * powf(10,9)) {
+	if ((timestamp = getTimens() - lastUpdate) < invFPS * 1000000000) {
 		return;
 	}
-	lastUpdate = timestamp;
+	lastUpdate = getTimens();
+	/*if (lastUpdate > lastSecond + 1000000000) {
+		lastSecond = lastUpdate;
+		std::cout << "frames this second" << frame << "\n";
+		frame = 0;
+	}
+	frame++;*/
+
 
 	for (GameObject* obj : gameObjects) {
 		/* Call update function */
@@ -1448,6 +1475,10 @@ double engine::physics::distance2D(sf::Vector2f v1, sf::Vector2f v2) {
 	float dy = v2.y - v1.y;
 	float d = sqrtf(dx * dx + dy * dy);
 	return d;
+}
+
+sf::Vector2f engine::physics::normalizeVector(sf::Vector2f v) {
+	return v / (float)engine::physics::distance2D(sf::Vector2f(0,0), v);
 }
 
 engine::physics::PhysicsManager::PhysicsManager() {
