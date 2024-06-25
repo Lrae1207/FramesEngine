@@ -25,18 +25,22 @@ engine::Game g(60[^1],120[^2],false[^3]);
 ## Creating an object instance
 
 There are currently 5 constructors for an engine::GameObject which can all be created afterward with any of the following:
-`GameObject(Game* game);`
-`GameObject(PolygonCollider* col, Game* game);`
-`GameObject(floatPolygon polygon, Game* game);`
-`GameObject(floatPolygon polygon, PolygonCollider* col, Game* game);`
-`GameObject(float radius, float colliderRadius, Game* game);`
-and then followed by `engine.registerObject(GameObject * obj, bool toUI);`
+```c++
+GameObject(Game* game);
+GameObject(PolygonCollider* col, Game* game);
+GameObject(floatPolygon polygon, Game* game);
+GameObject(floatPolygon polygon, PolygonCollider* col, Game* game);
+GameObject(float radius, float colliderRadius, Game* game);
+```
+and then followed by `engine.registerObject(GameObject * obj, bool toUI);
 
 However both of these steps can be combined by calling makeObject on an engine::Game with any of the following:
-`GameObject* makeObject(int layer, floatPolygon polygon, bool toUI);`
-`GameObject* makeObject(int layer, floatPolygon polygon, PolygonCollider* col, bool toUI);`
-`GameObject* makeObject(int layer, float radius, bool toUI);`
-`GameObject* makeObject();`
+```c++
+GameObject* makeObject(int layer, floatPolygon polygon, bool toUI);
+GameObject* makeObject(int layer, floatPolygon polygon, PolygonCollider* col, bool toUI);
+GameObject* makeObject(int layer, float radius, bool toUI);
+GameObject* makeObject();
+```
 
 By default these functions will create a pink triangle that should be rendered on the screen, but objects can be customized by the parameters and member functions of the engine::GameObject.
 
