@@ -32,7 +32,7 @@ GameObject(floatPolygon polygon, Game* game);
 GameObject(floatPolygon polygon, PolygonCollider* col, Game* game);
 GameObject(float radius, float colliderRadius, Game* game);
 ```
-and then followed by `engine.registerObject(GameObject * obj, bool toUI);
+and then followed by `engine.registerObject(GameObject * obj, bool toUI);`
 
 However both of these steps can be combined by calling makeObject on an engine::Game with any of the following:
 ```c++
