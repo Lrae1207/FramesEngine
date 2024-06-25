@@ -151,38 +151,7 @@ namespace engine {
 		bool isRigid = false;
 	};
 
-	class ENGINE_API PolygonCollider : public Collider {
-	private:
-		GameObject* parentObject;
-		bool isCircle;
-		int circlePoints = 100;
-		floatPolygon vertices = {};
-	public:
-		PolygonCollider();
-		PolygonCollider(floatPolygon polygon, GameObject* obj);
-		PolygonCollider(Rect r, GameObject* obj);
-		PolygonCollider(float radius, GameObject* obj);
-		~PolygonCollider();
-
-		GameObject* getParent();
-		void setParent(GameObject* obj);
-
-		floatPolygon getPolygon();
-		void setPolygon(floatPolygon p);
-
-		bool shapeIsCircle();
-		void setIsCircle(bool setTo);
-
-		int getPoints();
-		void setPoints(int points);
-
-		// top, bottom are lowest and highest y values respectively
-		// left, right are lowest and highest x values respectively
-		Rect extrusion;
-		void updateExtrusion();
-
-		void* onCollision;
-	};
+	class ENGINE_API PolygonCollider;
 
 	// Namespace for collision management;
 	// Seperate namespace bc I expect a lot of stuff to go here
@@ -191,10 +160,23 @@ namespace engine {
 		bool overlap1D(float a1, float a2, float b1, float b2);
 
 		// Classes
-		struct CollisionPair {
+		class ENGINE_API CollisionPair {
+		public:
 			PolygonCollider* c1 = nullptr;
 			PolygonCollider* c2 = nullptr;
 			float overlap = 0.0f;
+
+			bool operator == (const CollisionPair& other) const {
+				return (c1 == other.c1 && c2 == other.c2);
+			}
+
+			bool operator > (const CollisionPair& other) const {
+				return (c1 > other.c1);
+			}
+
+			bool operator < (const CollisionPair& other) const {
+				return (c1 < other.c1);
+			}
 		};
 
 		class ENGINE_API ColliderBound {
@@ -205,18 +187,25 @@ namespace engine {
 			bool operator < (const engine::collisions::ColliderBound& other) const;
 		};
 
+		struct ENGINE_API Normal {
+			sf::Vector2f direction;
+			sf::Vector2f offset;
+		};
+
 		// Algorithms
-		std::vector<CollisionPair*> broadSortAndSweep(std::vector<PolygonCollider*> colliders);
-		std::vector<CollisionPair*> narrowSAT(std::vector<CollisionPair*> pairs);
+		std::vector<CollisionPair> broadSortAndSweep(std::vector<PolygonCollider*> colliders);
+		std::vector<CollisionPair> narrowSAT(std::vector<CollisionPair> pairs);
 
 		class ENGINE_API CollisionManager {
 		private:
-			std::vector<CollisionPair*> computedCollisions = {};
+			std::vector<CollisionPair> computedCollisions = {};
 		public:
 			CollisionManager();
 			~CollisionManager();
-			std::vector<CollisionPair*> calculateCollisionPairs(std::vector<PolygonCollider*> colliders);
+			std::vector<CollisionPair> calculateCollisionPairs(std::vector<PolygonCollider*> colliders);
 			void handleCollisions(std::vector<PolygonCollider*> colliders);
+
+			std::vector<CollisionPair> getCollisions() { return computedCollisions; }
 		};
 	}
 
@@ -240,6 +229,44 @@ namespace engine {
 
 		ENGINE_API sf::Vector2f normalizeVector(sf::Vector2f v);
 	}
+
+	class ENGINE_API PolygonCollider : public Collider {
+	private:
+		GameObject* parentObject;
+		bool isCircle;
+		int circlePoints = 100;
+		floatPolygon vertices = {};
+	public:
+		PolygonCollider();
+		PolygonCollider(floatPolygon polygon, GameObject* obj);
+		PolygonCollider(Rect r, GameObject* obj);
+		PolygonCollider(float radius, GameObject* obj);
+		~PolygonCollider();
+
+		std::vector<collisions::Normal> getNormals();
+
+		GameObject* getParent();
+		void setParent(GameObject* obj);
+
+		floatPolygon getPolygon();
+		void setPolygon(floatPolygon p);
+
+		bool shapeIsCircle();
+		void setIsCircle(bool setTo);
+
+		int getPoints();
+		void setPoints(int points);
+
+		// top, bottom are lowest and highest y values respectively
+		// left, right are lowest and highest x values respectively
+		Rect extrusion;
+		void updateExtrusion();
+		void updateGlobalExtrusion();
+		sf::Vector2f getExtrusionsOnAxis(sf::Vector2f axis);
+		sf::Vector2f getExtrusionsOnNormal(collisions::Normal normal);
+
+		void* onCollision;
+	};
 
 	/*
 		Class representing the shape to be rendered on an object
@@ -293,8 +320,9 @@ namespace engine {
 	};
 
 	struct Force {
-		sf::Vector2f vector; /* position displacement on an object of mass 1 */
-		bool persistent = true; /* is it not deleted after being applied */
+		sf::Vector2f vector = sf::Vector2f(1,1); /* position displacement on an object of mass 1 */
+		sf::Vector2f origin = sf::Vector2f(0,0); /* relative to another the object's position */
+		bool persistent = false; /* is it not deleted after being applied */
 	};
 
 	/*
@@ -317,6 +345,7 @@ namespace engine {
 
 		// Physics propertiesfloatPolygon
 		sf::Vector2f velocity;
+		float angularVelocity;
 		PolygonCollider* col;
 		std::vector<Force> actingForces;
 
@@ -388,6 +417,7 @@ namespace engine {
 		void* getStartFunction();
 		void* getUpdateFunction();
 		void* getPhysicsUpdateFunction();
+		Game* getEngine();
 
 		/* Set functions */
 		void setVisibility(bool v);
@@ -412,9 +442,11 @@ namespace engine {
 	class Particle;
 
 	struct PhysicsSettings {
-		sf::Vector2f gravityDir = physics::normalizeVector(sf::Vector2f(0,1));
+		float integrationFactor = 0.01f;
+		sf::Vector2f gravityDir = sf::Vector2f(0,1);
 		float gravitySpeed = 1.0f;
-		float drag = 0.01f;
+		float dragFactor = 0.01f;
+		float angularDragCoef;
 	};
 
 	/*
@@ -431,7 +463,9 @@ namespace engine {
 		long long lastPhysicsUpdate = 0;
 		long long startTime;
 		int frame = 0;
+		int tickCounter = 0;
 		long long lastSecond = 0;
+		long long lastSecondUpdate = 0;
 		float timeScale;
 
 		float maxFPS;
@@ -442,6 +476,8 @@ namespace engine {
 
 		sf::Event event;
 		sf::VideoMode videoMode;
+
+		bool warningsEnabled = false;
 
 		float backgroundBrightness = 1.0f;
 
@@ -474,7 +510,7 @@ namespace engine {
 		PhysicsSettings physicsSettings;
 
 		// Constructors
-		Game(float fps, float ups);
+		Game(float fps, float ups, bool enableWarnings);
 		virtual ~Game();
 
 		// Accessors
@@ -496,7 +532,7 @@ namespace engine {
 
 		// Game update and render functions
 		void update();
-		void updateObjects(float deltaTime);
+		void updateObjects();
 		void stopScene();
 		void resetScene();
 		void render();

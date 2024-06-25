@@ -8,6 +8,7 @@ Controller::Controller() {
 }
 
 Controller::~Controller() {
+
 }
 
 /* Calls the response for the given keyup event and updates the state of the key */

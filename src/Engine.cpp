@@ -36,7 +36,7 @@ float engine::vmath::dotProduct(sf::Vector2f a, sf::Vector2f b) {
 }
 
 float engine::vmath::distanceAlongProjection(sf::Vector2f a, sf::Vector2f b) {
-	return dotProduct(a, normalizeVector(b));
+	return dotProduct(a, b);
 }
 
 float engine::vmath::getDistance(sf::Vector2f v1, sf::Vector2f v2) {
@@ -344,6 +344,10 @@ void* engine::GameObject::getStartFunction() { return startFunction; }
 void* engine::GameObject::getUpdateFunction() { return updateFunction; }
 void* engine::GameObject::getPhysicsUpdateFunction() { return physicsUpdateFunction; }
 
+engine::Game* engine::GameObject::getEngine() {
+	return engine;
+}
+
 /*
 	return void
 	Creates the window
@@ -364,20 +368,21 @@ void engine::Game::init(float frameCap) {
 	camera.transform->setSize(sf::Vector2f(window->getSize().x, window->getSize().y));
 
 	collisionManager = new collisions::CollisionManager();
-	debugLog("Instantiated Engine(game)", LOG_GREEN);
 }
 
 /*
 	Constructor for game class
 	Anything that happens initially goes here
 */
-engine::Game::Game(float fps, float ups) {
+engine::Game::Game(float fps, float ups, bool enableWarnings) {
+	warningsEnabled = enableWarnings;
 	maxFPS = fps;
 	invFPS = 1 / fps;
 	physUPS = ups;
 	invPhysUPS = 1 / ups;
 
 	init(fps);
+	debugLog("Instantiated Engine(game)", LOG_GREEN);
 	debugLog("Loaded Engine(game)", LOG_GREEN);
 	manager = GameManager(this);
 }
@@ -399,6 +404,7 @@ engine::GameObject* engine::Game::makeObject(int layer, float radius, bool toUI)
 	newObject->id = nextId;
 	nextId++;
 	gameObjects.push_back(newObject);
+
 	drawShape(newObject->getShapeComponent(), toUI);
 	newObject->getShapeComponent()->layer = layer;
 	drawCollider(newObject->getCollider(), true);
@@ -412,6 +418,7 @@ engine::GameObject* engine::Game::makeObject() {
 	GameObject* newObject = new GameObject(this);
 	newObject->id = nextId++;
 	gameObjects.push_back(newObject);
+	drawCollider(newObject->getCollider(), true);
 	newObject->getShapeComponent()->layer = 1;
 	newObject->getCollider()->layer = 1;
 	return newObject;
@@ -523,6 +530,14 @@ void engine::Game::update() {
 		return;
 	}
 	lastPhysicsUpdate = getTimens();
+	if (warningsEnabled && lastPhysicsUpdate > lastSecondUpdate + 1000000000) {
+		if (tickCounter < physUPS) { 
+			debugLog("Warning: update rate dropped to " + std::to_string(tickCounter) + " ups", LOG_YELLOW); 
+		};
+		lastSecondUpdate = lastPhysicsUpdate;
+		tickCounter = 0;
+	}
+	tickCounter++;
 
 	/* Event polling */
 	while (window->pollEvent(event)) {
@@ -567,10 +582,14 @@ void engine::Game::update() {
 
 
 	/* Collision handling */
-	//collisionManager->handleCollisions(colliders);
+	collisionManager->handleCollisions(colliders);
+	debugLog(std::to_string(collisionManager->getCollisions().size()) + " collisions", LOG_BLUE);
+	for (collisions::CollisionPair pair : collisionManager->getCollisions()) {
+		//debugLog("collision between: " + pair.c1->getParent()->objName + " and " + pair.c2->getParent()->objName, LOG_BLUE);
+	}
 
 	if (!paused) {
-		updateObjects((currentTime - lastTime) / powf(10, 9));
+		updateObjects();
 		tick++;
 	}
 }
@@ -578,7 +597,7 @@ void engine::Game::update() {
 /*
 	Update each individual object
 */
-void engine::Game::updateObjects(float deltaTime) {
+void engine::Game::updateObjects() {
 	for (GameObject* obj : gameObjects) {
 		/* Properties of the object */
 		Transform* t = obj->getTransform();
@@ -588,11 +607,13 @@ void engine::Game::updateObjects(float deltaTime) {
 		PolygonCollider* p = obj->getCollider();
 		if (p == nullptr) { continue; }
 
-		/* Calculate net acceleration*/
+		/* Calculate net acceleration */
+		float torque = 0;
 		sf::Vector2f acceleration = sf::Vector2f(0, 0);
 		for (int i = t->actingForces.size()-1; i >= 0; i--) {
 			Force f = t->actingForces[i];
 			acceleration += f.vector;
+			torque += vmath::getMagnitude(f.origin) * vmath::getMagnitude(f.vector);
 			if (!f.persistent) {
 				t->actingForces.erase(t->actingForces.begin() + i);
 			}
@@ -600,24 +621,21 @@ void engine::Game::updateObjects(float deltaTime) {
 
 		/* Gravity and other physics */
 		if (t->isPhysical) {
-			acceleration += physicsSettings.gravityDir * physicsSettings.gravitySpeed; // gravity
+			acceleration += (physicsSettings.gravityDir * physicsSettings.gravitySpeed); // gravity
 		}
 
 		/* Semi-implicit euler integration */
 		acceleration *= t->getInverseMass(); // Make sure mass is never 0
-		t->velocity += acceleration;// * deltaTime;
-		debugLog(std::to_string(t->velocity.y) + ";" + std::to_string(t->velocity.y), LOG_BLUE);
+		t->velocity += acceleration * physicsSettings.integrationFactor;// * deltaTime;
 
 		if (t->isPhysical) {
-			sf::Vector2f dragForce = t->velocity * -1.0f;
-			float dragCoef = (float)physics::distance2D(sf::Vector2f(0, 0), t->velocity); // magnitude
-			dragCoef *= dragCoef;
-			dragForce *= dragCoef * physicsSettings.drag;
-			t->velocity += dragForce; // calculate drag last
-			debugLog(std::to_string(dragForce.x) + ";" + std::to_string(dragForce.y), LOG_BLUE);
+			t->velocity *= physicsSettings.dragFactor; // calculate drag last
+
+			t->angularVelocity *= physicsSettings.angularDragCoef;
 		}
 
-		t->position += t->velocity;// * deltaTime;
+		t->position += t->velocity * physicsSettings.integrationFactor;// * deltaTime;
+		t->rotationDegree += t->angularVelocity;
 
 		/* Call update function */
 		if (obj->getPhysicsUpdateFunction() != nullptr) {
@@ -675,12 +693,13 @@ void engine::Game::render() {
 		return;
 	}
 	lastUpdate = getTimens();
-	/*if (lastUpdate > lastSecond + 1000000000) {
+
+	if (warningsEnabled && lastUpdate > lastSecond + 1000000000) {
+		if (frame < maxFPS) { debugLog("Warning: frame rate dropped to " + std::to_string(frame) + " fps", LOG_YELLOW); };
 		lastSecond = lastUpdate;
-		std::cout << "frames this second" << frame << "\n";
 		frame = 0;
 	}
-	frame++;*/
+	frame++;
 
 
 	for (GameObject* obj : gameObjects) {
@@ -1089,6 +1108,7 @@ bool engine::Game::removeFromUI(void* removePtr) {
 
 void engine::Game::debugLog(std::string str, std::string colorStr) {
 	std::cout << "tick:" << tick << "|" << colorStr << str << LOG_RESET << std::endl;
+	return;
 }
 
 void* engine::Game::debugLine(sf::Vector2f start, sf::Vector2f end) {
@@ -1290,6 +1310,27 @@ engine::PolygonCollider::PolygonCollider(float radius, GameObject* obj) {
 
 engine::PolygonCollider::~PolygonCollider() {}
 
+std::vector<engine::collisions::Normal> engine::PolygonCollider::getNormals() {
+	std::vector<collisions::Normal> normals = {};
+	if (vertices.size() == 0) {
+		return normals;
+	}
+	sf::Vector2f transformOffset = parentObject->getTransform()->getPosition();
+	for (int i = 0; i < vertices.size() - 1; ++i) {
+		collisions::Normal normal;
+		sf::Vector2f direction = vertices[i + 1] - vertices[i];
+		normal.direction = vmath::normalizeVector(sf::Vector2f(0-direction.y, direction.x));
+		normal.offset = transformOffset;
+		normals.push_back(normal);
+	}
+	collisions::Normal normal;
+	sf::Vector2f direction = vertices[0] - vertices[vertices.size() - 1];
+	normal.direction = vmath::normalizeVector(sf::Vector2f(0 - direction.y, direction.x));
+	normal.offset = transformOffset;
+	normals.push_back(normal);
+	return normals;
+}
+
 engine::GameObject* engine::PolygonCollider::getParent() { return parentObject; }
 void engine::PolygonCollider::setParent(GameObject* obj) { parentObject = obj; }
 
@@ -1331,6 +1372,40 @@ void engine::PolygonCollider::updateExtrusion() {
 	extrusion = newExtrusion;
 }
 
+void engine::PolygonCollider::updateGlobalExtrusion() {
+	Rect newExtrusion;
+	newExtrusion.top = 0;
+	newExtrusion.bottom = 0;
+	newExtrusion.left = 0;
+	newExtrusion.right = 0;
+
+	if (vertices.size() == 0) {
+		return;
+	}
+
+	for (sf::Vector2f v : vertices) {
+		if (v.x < newExtrusion.left) {
+			newExtrusion.left = v.x;
+		}
+		if (v.x > newExtrusion.right) {
+			newExtrusion.right = v.x;
+		}
+		if (v.x < newExtrusion.top) {
+			newExtrusion.top = v.y;
+		}
+		if (v.x > newExtrusion.bottom) {
+			newExtrusion.bottom = v.y;
+		}
+	}
+	Transform* t = parentObject->getTransform();
+	newExtrusion.top += t->getPosition().y;
+	newExtrusion.bottom += t->getPosition().y;
+	newExtrusion.right += t->getPosition().x;
+	newExtrusion.left += t->getPosition().x;
+
+	extrusion = newExtrusion;
+}
+
 // Assume that a2 >= a1 and b2 >= b1
 bool engine::collisions::overlap1D(float a1, float a2, float b1, float b2) {
 	return std::min(a2, b2) - std::max(a1, b1) == 0;
@@ -1347,15 +1422,15 @@ bool engine::collisions::ColliderBound::operator < (const engine::collisions::Co
 
 /* Collisions */
 
-std::vector<engine::collisions::CollisionPair*> engine::collisions::broadSortAndSweep(std::vector<PolygonCollider*> colliders) {
-	std::vector<CollisionPair*> pairs = {};
+std::vector<engine::collisions::CollisionPair> engine::collisions::broadSortAndSweep(std::vector<PolygonCollider*> colliders) {
+	std::vector<CollisionPair> pairs = {};
 
 	std::vector<ColliderBound> xorderedBounds = {};
 	std::vector<ColliderBound> yorderedBounds = {};
 
 	/* Generate lists of bounds along x and y axis */
 	for (PolygonCollider* c : colliders) {
-		c->updateExtrusion();
+		c->updateGlobalExtrusion();
 		xorderedBounds.push_back(ColliderBound(c, c->extrusion.right));
 		xorderedBounds.push_back(ColliderBound(c, c->extrusion.left));
 		yorderedBounds.push_back(ColliderBound(c, c->extrusion.top));
@@ -1369,20 +1444,25 @@ std::vector<engine::collisions::CollisionPair*> engine::collisions::broadSortAnd
 	// X coordinate
 	for (ColliderBound c : xorderedBounds) {
 		int i = 0;
+		// Find another bound with the same collider
 		while (i < unclosedBounds.size() && c.col != unclosedBounds[i].col) {
+			// Add a possible CollisionPair for each unclosedBound
+			CollisionPair newPair;
+			ColliderBound bound = unclosedBounds[i];
+			if (c.col > bound.col) { // higher collider* goes in c1; optimization for duplicate removal
+				newPair.c1 = c.col;
+				newPair.c2 = bound.col;
+			} else {
+				newPair.c2 = c.col;
+				newPair.c1 = bound.col;
+			}
+			pairs.push_back(newPair);
 			i++;
 		}
 
 		if (i == unclosedBounds.size()) { // Pair not found
-			for (ColliderBound bound : xorderedBounds) {
-				CollisionPair newPair;
-				newPair.c1 = c.col;
-				newPair.c2 = unclosedBounds[i].col;
-				pairs.push_back(&newPair);
-			}
 			unclosedBounds.push_back(c);
-		}
-		else { // Pair found
+		} else { // Pair found
 			unclosedBounds.erase(unclosedBounds.begin() + i);
 		}
 	}
@@ -1392,17 +1472,24 @@ std::vector<engine::collisions::CollisionPair*> engine::collisions::broadSortAnd
 	// Y coordinate
 	for (ColliderBound c : yorderedBounds) {
 		int i = 0;
+		// Find another bound with the same collider
 		while (i < unclosedBounds.size() && c.col != unclosedBounds[i].col) {
+			// Add a possible CollisionPair for each unclosedBound
+			CollisionPair newPair;
+			ColliderBound bound = unclosedBounds[i];
+			if (c.col > bound.col) { // higher collider* goes in c1; optimization for duplicate removal
+				newPair.c1 = c.col;
+				newPair.c2 = bound.col;
+			}
+			else {
+				newPair.c2 = c.col;
+				newPair.c1 = bound.col;
+			}
+			pairs.push_back(newPair);
 			i++;
 		}
 
 		if (i == unclosedBounds.size()) { // Pair not found
-			for (ColliderBound bound : yorderedBounds) {
-				CollisionPair newPair;
-				newPair.c1 = c.col;
-				newPair.c2 = unclosedBounds[i].col;
-				pairs.push_back(&newPair);
-			}
 			unclosedBounds.push_back(c);
 		}
 		else { // Pair found
@@ -1410,13 +1497,48 @@ std::vector<engine::collisions::CollisionPair*> engine::collisions::broadSortAnd
 		}
 	}
 
+	// Remove duplicates from pairs
+	// Earlier the collider* with the higher value went in c1 and the other in c2
+	// This way we don't have to cross-check c1 and c2; just if c1 == c1 && c2 == c2
+
+	// nvm std functions
+	std::sort(pairs.begin(), pairs.end());
+	pairs.erase(std::unique(pairs.begin(), pairs.end()), pairs.end());
+
 	return pairs;
 }
 
-std::vector<engine::collisions::CollisionPair*> engine::collisions::narrowSAT(std::vector<CollisionPair*> colliders) {
-	// work here
-	std::vector<engine::collisions::CollisionPair*> s;
-	return s;
+std::vector<engine::collisions::CollisionPair> engine::collisions::narrowSAT(std::vector<CollisionPair> collisions) {
+	// work herefsadsdfsadffsdfsfsdfsd
+
+
+	std::vector<engine::collisions::CollisionPair> confirmedCollisions;
+	for (CollisionPair pair : collisions) {
+		std::vector<collisions::Normal> normal1 = pair.c1->getNormals();
+		std::vector<collisions::Normal> normal2 = pair.c2->getNormals();
+
+		// add normal2 to normal1
+		// normal1 now contains all normals
+		normal1.insert(normal1.end(), normal2.begin(), normal2.end());
+
+		for (int i = 0; i < normal1.size(); ++i) {
+			collisions::Normal normal = normal1[i];
+			sf::Vector2f d1 = pair.c1->getExtrusionsOnNormal(normal);
+			sf::Vector2f d2 = pair.c2->getExtrusionsOnNormal(normal);
+
+			if (!((d1.x <= d2.x && d1.y >= d2.x) || // d2.x is between d1
+				(d1.x <= d2.y && d1.y >= d2.y) || // d2.y is between d1
+				(d2.x <= d1.x && d2.y >= d1.x) || // d1.x is between d2
+				(d2.x <= d1.y && d2.y >= d1.y))) { // d1.y is between d2
+				// collision proven false
+				break;
+			}
+			if (i == normal1.size() - 1) {// This will only be true if the program has confirmed a collision between all axes
+				confirmedCollisions.push_back(pair);
+			}
+		}
+	}
+	return confirmedCollisions;
 }
 
 engine::collisions::CollisionManager::CollisionManager() {
@@ -1427,40 +1549,55 @@ engine::collisions::CollisionManager::~CollisionManager()
 {
 }
 
-std::vector<engine::collisions::CollisionPair*> engine::collisions::CollisionManager::calculateCollisionPairs(std::vector<PolygonCollider*> colliders) {
+std::vector<engine::collisions::CollisionPair> engine::collisions::CollisionManager::calculateCollisionPairs(std::vector<PolygonCollider*> colliders) {
 	return (computedCollisions = narrowSAT(broadSortAndSweep(colliders)));
 }
 
 void engine::collisions::CollisionManager::handleCollisions(std::vector<PolygonCollider*> colliders) {
 	calculateCollisionPairs(colliders);
 
-	std::vector<PolygonCollider*> uniqueColliders = {};
-	for (int i = 0; i < computedCollisions.size(); ++i) { // Fill uniqueColliders with colliders that aren't duplicates
-		PolygonCollider* c1 = computedCollisions[i]->c1;
-		PolygonCollider* c2 = computedCollisions[i]->c2;
+	std::sort(computedCollisions.begin(), computedCollisions.end());
+	computedCollisions.erase(std::unique(computedCollisions.begin(), computedCollisions.end()), computedCollisions.end());
+}
 
-		int uniqueIndex = 0;
-		while (uniqueIndex < uniqueColliders.size() && uniqueColliders[uniqueIndex] != c1) {
-			++uniqueIndex;
-		}
-		if (uniqueIndex == uniqueColliders.size()) { // Item not found in the list
-			uniqueColliders.push_back(c1);
-		}
+sf::Vector2f engine::PolygonCollider::getExtrusionsOnAxis(sf::Vector2f axis) {
+	axis = vmath::normalizeVector(axis);
+	sf::Vector2f position = parentObject->getTransform()->getPosition();
 
-		uniqueIndex = 0;
-		while (uniqueIndex < uniqueColliders.size() && uniqueColliders[uniqueIndex] != c2) {
-			++uniqueIndex;
+	float farthest = vmath::distanceAlongProjection(vertices[0]+position,axis);
+	float closest = farthest;
+
+	for (int i = 1; i < vertices.size(); ++i) {
+		float distance = vmath::distanceAlongProjection(vertices[i]+position, axis);
+		if (distance > farthest) {
+			farthest = distance;
 		}
-		if (uniqueIndex == uniqueColliders.size()) { // Item not found in the list
-			uniqueColliders.push_back(c2);
+		if (distance < closest) {
+			closest = distance;
 		}
 	}
+	return sf::Vector2f(closest, farthest);
+}
 
-	for (PolygonCollider* pc : uniqueColliders) {
-		//if (pc->onCollision != nullptr) {
-			//((void(*)())pc->onCollision)(); // Call the oncollision function of each collider if it exists
-		//}
+sf::Vector2f engine::PolygonCollider::getExtrusionsOnNormal(collisions::Normal normal) {
+	sf::Vector2f axis = vmath::normalizeVector(normal.direction);
+	sf::Vector2f normalOffset = normal.offset;
+	sf::Vector2f transformOffset = parentObject->getTransform()->getPosition() - normalOffset;
+
+	float farthest = vmath::distanceAlongProjection(vertices[0] + transformOffset, axis);
+	float closest = farthest;
+
+	for (int i = 1; i < vertices.size(); ++i) {
+		sf::Vector2f relativePos = vertices[i] + transformOffset;
+		float distance = vmath::distanceAlongProjection(relativePos, axis);
+		if (distance > farthest) {
+			farthest = distance;
+		}
+		if (distance < closest) {
+			closest = distance;
+		}
 	}
+	return sf::Vector2f(closest, farthest);
 }
 
 double engine::physics::distance2D(double x1, double y1, double x2, double y2) {
