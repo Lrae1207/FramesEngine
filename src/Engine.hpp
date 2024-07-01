@@ -38,13 +38,14 @@ namespace engine {
 	class GameObject;
 	class Transform;
 	class Texture;
+	class ShapeComponent;
+	struct AnimationNode;
+	class Animator;
 
-	class ENGINE_API GameManager {
-	private:
-		Game* game;
-	public:
-		GameManager();
-		GameManager(Game* engine);
+	struct StrippedTransform {
+		sf::Vector2f position = sf::Vector2f(0,0);
+		float rotation = 0;
+		sf::Vector2f scale = sf::Vector2f(1,1);
 	};
 
 	// Aliases
@@ -119,23 +120,23 @@ namespace engine {
 
 	// Vector mathmatical functions
 	namespace vmath {
-		sf::Vector2f normalizeVector(sf::Vector2f vector);
-		float getMagnitude(sf::Vector2f vector);
+		sf::Vector2f ENGINE_API normalizeVector(sf::Vector2f vector);
+		float ENGINE_API getMagnitude(sf::Vector2f vector);
 
-		float getDistance(sf::Vector2f v1, sf::Vector2f v2);
+		float ENGINE_API getDistance(sf::Vector2f v1, sf::Vector2f v2);
 
-		sf::Vector2f rotateByDegrees(sf::Vector2f vector, float degrees);
+		sf::Vector2f ENGINE_API rotateByDegrees(sf::Vector2f vector, float degrees);
 
-		sf::Vector2f addVectors(sf::Vector2f v1, sf::Vector2f v2);
-		sf::Vector2f subtractVectors(sf::Vector2f v1, sf::Vector2f v2);
+		sf::Vector2f ENGINE_API addVectors(sf::Vector2f v1, sf::Vector2f v2);
+		sf::Vector2f ENGINE_API subtractVectors(sf::Vector2f v1, sf::Vector2f v2);
 
-		float dotProduct(sf::Vector2f a, sf::Vector2f b);
-		float distanceAlongProjection(sf::Vector2f a, sf::Vector2f b);
+		float ENGINE_API dotProduct(sf::Vector2f a, sf::Vector2f b);
+		float ENGINE_API distanceAlongProjection(sf::Vector2f a, sf::Vector2f b);
 
-		sf::Vector2f multiplyVector(sf::Vector2f v1, float i);
-		sf::Vector2f divideVector(sf::Vector2f v1, float i);
+		sf::Vector2f ENGINE_API multiplyVector(sf::Vector2f v1, float i);
+		sf::Vector2f ENGINE_API divideVector(sf::Vector2f v1, float i);
 
-		sf::Vector2f utof(sf::Vector2u v1);
+		sf::Vector2f ENGINE_API utof(sf::Vector2u v1);
 	}
 
 	/* Game Management */
@@ -151,7 +152,7 @@ namespace engine {
 		bool isRigid = false;
 	};
 
-	class ENGINE_API PolygonCollider;
+	class PolygonCollider;
 
 	// Namespace for collision management;
 	// Seperate namespace bc I expect a lot of stuff to go here
@@ -265,6 +266,8 @@ namespace engine {
 		sf::Vector2f getExtrusionsOnAxis(sf::Vector2f axis);
 		sf::Vector2f getExtrusionsOnNormal(collisions::Normal normal);
 
+		void fitToTexture(Texture* t);
+
 		void* onCollision;
 	};
 
@@ -303,8 +306,9 @@ namespace engine {
 	*/
 	class ENGINE_API Texture : public Renderable {
 	private:
-		Transform* transform;
-		std::string texturePath;
+		StrippedTransform offsetTransform; // Applied on top of tranform
+		Transform* transform; // The parent's transform
+		std::string texturePath; // Path to the texture
 	public:
 		// Constructors and destructors
 		Texture(Transform* trans);
@@ -313,10 +317,12 @@ namespace engine {
 		/* Get functions */
 		std::string getTexturePath();
 		Transform* getTransform();
+		StrippedTransform* getOffset();
 
 		/* Set functions */
 		void setTexturePath(std::string path);
 		void setTransform(Transform* trans);
+		void setOffset(StrippedTransform t);
 	};
 
 	struct Force {
@@ -387,6 +393,7 @@ namespace engine {
 	*/
 	class ENGINE_API GameObject {
 	private:
+		Animator* animator;
 		PolygonCollider* collider;
 		Transform* transform;
 		ShapeComponent* shape;
@@ -418,6 +425,7 @@ namespace engine {
 		void* getUpdateFunction();
 		void* getPhysicsUpdateFunction();
 		Game* getEngine();
+		Animator* getAnimator();
 
 		/* Set functions */
 		void setVisibility(bool v);
@@ -426,6 +434,7 @@ namespace engine {
 		void setStartFunction(void* f);
 		void setUpdateFunction(void* f);
 		void setPhysicsUpdateFunction(void* f);
+		void setAnimator(Animator* a);
 
 		/* Misc functions */
 		void updateCollider();
@@ -442,10 +451,10 @@ namespace engine {
 	class Particle;
 
 	struct PhysicsSettings {
-		float integrationFactor = 0.01f;
+		float integrationFactor = 0.5f;
 		sf::Vector2f gravityDir = sf::Vector2f(0,1);
 		float gravitySpeed = 1.0f;
-		float dragFactor = 0.01f;
+		float dragFactor = 0.9f;
 		float angularDragCoef;
 	};
 
@@ -457,6 +466,7 @@ namespace engine {
 		/* Clocking and timing */
 		bool isActive = false;
 		long long tick = 0;
+		long long totalFrame = 0;
 		long long currentTime;
 		long long lastTime = 0;
 		long long lastUpdate = 0;
@@ -506,7 +516,6 @@ namespace engine {
 		void init(float frameCap);
 	public:
 		sf::RenderWindow* window;
-		GameManager manager;
 		PhysicsSettings physicsSettings;
 
 		// Constructors
@@ -523,6 +532,7 @@ namespace engine {
 		float getTimescale();
 		long long getElapsedTime();
 		//long long getDeltaTime();
+		long long getElapsedFrames();
 
 		// Get and set
 		void setBackgroundBrightness(float brightness);
@@ -575,6 +585,7 @@ namespace engine {
 		bool deleteObject(GameObject* delObj);
 		bool deleteObject(unsigned int targId);
 		std::string generateUniqueObjectName(std::string name);
+		GameObject* getCamFocus();
 
 		// Filesystem functions
 		bool loadScene(std::string path);
@@ -587,28 +598,36 @@ namespace engine {
 		Controller controller;
 	};
 
+	struct ENGINE_API AnimationNode {
+		float delayFrames; // delay between this node and the next node in render frames
+		Texture* texture;
+		StrippedTransform animationOffset;
+	};
 
-	class ENGINE_API Particle : Renderable {
+	class ENGINE_API Animator {
 	private:
-		Transform* transform;
+		Game* engine;
 		ShapeComponent* shape;
-		Game* game;
-		sf::Vector2f velocity;
-		float drag;
+		float lastFrameStamp;
+		int animationPosition = 0;
+		std::vector<AnimationNode*> animation = {};
 	public:
-		float lifeTime = 0.0f;
-		int id = 0;
-		Particle(Game* engine, sf::Vector2f v);
+		Animator(Game* g, GameObject* p);
 
-		void startRendering();
-		void stopRendering();
-		void deleteParticle();
+		// Get functions
+		std::vector<AnimationNode*> getAnimation() { return animation; }
 
-		Transform* getTransform();
-		ShapeComponent* getShape();
+		// Set functions
+		void setAnimation(std::vector<AnimationNode*> a) { animation = a; }
 
-		void setDrag(float d);
+		// Other vector functions
+		void deleteAnimation(int pos) { animation.erase(animation.begin() + pos); }
+		void appendAnimation(AnimationNode* node) { animation.push_back(node); }
 
-		void update();
+		// Positional Functions
+		void skipStep() { animationPosition = ++animationPosition % animation.size(); }
+		void rewindStep() { animationPosition = --animationPosition % animation.size(); }
+		void setNode(int newPos) { animationPosition = newPos; lastFrameStamp = engine->getElapsedFrames(); }
+		void updateAndRender();
 	};
 }
