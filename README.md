@@ -6,9 +6,9 @@ A lightweight c++ game engine library based on SFML
 # The Basics
 
 ## Implementing the engine files
-The engine can be utilized with by including the "Engine.hpp" file as follows:
+The engine can be utilized with by including the "root.hpp" file as follows:
 ```c++
-#include "Frame/Engine.hpp"
+#include "Frame/root.hpp"
 ```
 
 **Make sure that the linker includes the "engine.lib" file** 
@@ -47,7 +47,7 @@ By default these functions will create a pink triangle that should be rendered o
 # Examples
 This is an example of the most basic code that will make the engine function
 ```c++
-#include "Frame/Engine.hpp"
+#include "Frame/root.hpp"
 
 int main() {
 	engine::Game g(60,120,false); // 60 fps max, 120 ups max
@@ -63,7 +63,7 @@ int main() {
 
 This example should generate a falling magenta triangle
 ```c++
-#include "Frame/Engine.hpp"
+#include "Frame/root.hpp"
 
 int main() {
 	engine::Game g(60,120,false);

@@ -4,6 +4,7 @@
 // Constructor and destructor
 Controller::Controller() {
 	mouseMoveHandler = nullptr;
+	keyDownMap = std::map<sf::Keyboard::Key, bool>();
 	// Initialize response functions here
 }
 
@@ -47,6 +48,14 @@ bool Controller::getKeyUp(const sf::Keyboard::Key key) {
 	return !keyDownMap[key];
 }
 
+bool Controller::getKeyDown(const sf::Mouse::Button button) {
+	return sf::Mouse::isButtonPressed(button);
+}
+
+bool Controller::getKeyUp(const sf::Mouse::Button button) {
+	return !sf::Mouse::isButtonPressed(button);
+}
+
 
 /* Calls the response for a mouse update event */
 void Controller::handleMouseMove(const sf::Vector2i mouseState) {
@@ -54,4 +63,10 @@ void Controller::handleMouseMove(const sf::Vector2i mouseState) {
 		void (*f)(sf::Vector2i) = static_cast<void(*)(sf::Vector2i)>(mouseMoveHandler);
 		(*f)(mouseState);
 	}
+}
+
+sf::Vector2f Controller::getMousePosition() {
+	sf::Vector2i v = sf::Mouse::getPosition();
+	sf::Vector2f f = sf::Vector2f(v.x,v.y);
+	return f;
 }

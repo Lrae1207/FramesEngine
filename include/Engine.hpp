@@ -6,6 +6,8 @@
 #include "filesystem.hpp"
 #include "MACROS.hpp" // Makes key names easier
 #include "Controller.hpp" // Handler for user input
+#include "Algorithms.hpp"
+#include "Fundamentals.hpp"
 #include <string>
 #include <vector> // Dynamic Arrays
 #include <iostream> // Debugging output
@@ -13,84 +15,18 @@
 #include <cmath> // For vector math
 #include <algorithm> // For sort
 
-template <typename T>
-class ENGINE_API sptr { // Smart Pointer
-private:
-	T* pointer; // pointer to person class
-public:
-	sptr() { pointer = nullptr; }
-
-	sptr(T* guardThis) { pointer = guardThis; }
-
-	~sptr() { if (pointer) { delete pointer; } }
-
-	T& operator* () {
-		return *pointer;
-	}
-
-	T* operator-> () {
-		return pointer;
-	}
-};
-
 namespace engine {
 	class Game;
 	class GameObject;
 	class Transform;
-	class Texture;
+	class LoadableTexture;
 	class ShapeComponent;
 	struct AnimationNode;
 	class Animator;
 
-	struct StrippedTransform {
-		sf::Vector2f position = sf::Vector2f(0,0);
-		float rotation = 0;
-		sf::Vector2f scale = sf::Vector2f(1,1);
-	};
-
-	// Aliases
-	using floatPolygon = std::vector<sf::Vector2f>;
-
-	enum ENGINE_API renderable_id { none, particle, line, circle_collider, poly_collider, shape, text, texture };
-
-	/* Objects that can be drawn by the engine */
-	class Renderable {
-	public:
-		int layer = 1; // 0 is UI
-		int type_id = 0; // type of object
-		bool cullThis = false;
-		/*
-			id:
-			1 - Particle
-			2 - Line
-			3 - RadiusCollider
-			4 - PolygonCollider
-			5 - ShapeComponent
-			6 - Text
-			7 - Sprite/texture
-		*/
-
-		bool operator < (const Renderable& other) const {
-			return (layer < other.layer);
-		}
-
-		bool operator > (const Renderable& other) const {
-			return (layer > other.layer);
-		}
-	};
-
 	long long getTimens();
 	std::string boolToString(bool b);
-	sf::Color changeAlpha(sf::Color color, int alpha);
-
-	/* Structs for data storage */
-
-	/* Holds 4 values*/
-	struct Rect {
-		float top, left, bottom, right;
-	};
-
-	floatPolygon rectToPolygon(Rect r);
+	sf::Color ENGINE_API changeAlpha(sf::Color *color, int alpha);
 
 	/* Holds data for a line */
 	class ENGINE_API Line : public Renderable {
@@ -117,27 +53,6 @@ namespace engine {
 		~Text();
 		Text(sf::Color col, sf::Vector2f pos, sf::Vector2f org, std::string text, int size, sf::Font* fontptr);
 	};
-
-	// Vector mathmatical functions
-	namespace vmath {
-		sf::Vector2f ENGINE_API normalizeVector(sf::Vector2f vector);
-		float ENGINE_API getMagnitude(sf::Vector2f vector);
-
-		float ENGINE_API getDistance(sf::Vector2f v1, sf::Vector2f v2);
-
-		sf::Vector2f ENGINE_API rotateByDegrees(sf::Vector2f vector, float degrees);
-
-		sf::Vector2f ENGINE_API addVectors(sf::Vector2f v1, sf::Vector2f v2);
-		sf::Vector2f ENGINE_API subtractVectors(sf::Vector2f v1, sf::Vector2f v2);
-
-		float ENGINE_API dotProduct(sf::Vector2f a, sf::Vector2f b);
-		float ENGINE_API distanceAlongProjection(sf::Vector2f a, sf::Vector2f b);
-
-		sf::Vector2f ENGINE_API multiplyVector(sf::Vector2f v1, float i);
-		sf::Vector2f ENGINE_API divideVector(sf::Vector2f v1, float i);
-
-		sf::Vector2f ENGINE_API utof(sf::Vector2u v1);
-	}
 
 	/* Game Management */
 
@@ -211,7 +126,7 @@ namespace engine {
 	}
 
 	namespace physics {
-		const double PI = 3.1415926535;
+		//const double PI = 3.1415926535;
 		const double TWOPI = PI * 2;
 		const double RADTODEG = 180.0f / PI;
 		const double DEGTORAD = PI / 180.0f;
@@ -266,7 +181,7 @@ namespace engine {
 		sf::Vector2f getExtrusionsOnAxis(sf::Vector2f axis);
 		sf::Vector2f getExtrusionsOnNormal(collisions::Normal normal);
 
-		void fitToTexture(Texture* t);
+		void fitToTexture(LoadableTexture* t);
 
 		void* onCollision;
 	};
@@ -289,7 +204,7 @@ namespace engine {
 		sf::Color outlineColor;
 		float outlineThickness;
 
-		Texture* texture;
+		LoadableTexture* texture;
 
 		/* Constructor and destructor */
 		ShapeComponent();
@@ -301,18 +216,23 @@ namespace engine {
 		sf::ConvexShape constructShape();
 	};
 
+	class Texture {
+
+	};
+
 	/*
 		No clue why I made this. I will probably use this for an image texture holder.
 	*/
-	class ENGINE_API Texture : public Renderable {
+	class ENGINE_API LoadableTexture : public Renderable {
 	private:
 		StrippedTransform offsetTransform; // Applied on top of tranform
-		Transform* transform; // The parent's transform
+		Transform* transform = nullptr; // The parent's transform
 		std::string texturePath; // Path to the texture
 	public:
 		// Constructors and destructors
-		Texture(Transform* trans);
-		Texture(Transform* trans, std::string path);
+		LoadableTexture();
+		LoadableTexture(Transform* trans);
+		LoadableTexture(Transform* trans, std::string path);
 
 		/* Get functions */
 		std::string getTexturePath();
@@ -343,6 +263,7 @@ namespace engine {
 		bool isPhysical = true;
 
 		// Properties
+		Transform* parentTransform = nullptr; // Not the transform of parentObject but the transform of parentObject's parent 
 		GameObject* parentObject;
 		sf::Vector2f size;
 		sf::Vector2f origin;
@@ -354,6 +275,8 @@ namespace engine {
 		float angularVelocity;
 		PolygonCollider* col;
 		std::vector<Force> actingForces;
+
+		Transform compileParents();
 
 		// Constructors and destructors
 		Transform();
@@ -402,8 +325,9 @@ namespace engine {
 		void* startFunction;
 		void* updateFunction;
 		void* physicsUpdateFunction;
-	public:
+		void* externalManager;
 		GameObject* parent = nullptr;
+	public:
 		std::string objName = "default";
 		unsigned int id;
 
@@ -426,6 +350,8 @@ namespace engine {
 		void* getPhysicsUpdateFunction();
 		Game* getEngine();
 		Animator* getAnimator();
+		GameObject* getParent();
+		void* getExternalManager();
 
 		/* Set functions */
 		void setVisibility(bool v);
@@ -435,6 +361,8 @@ namespace engine {
 		void setUpdateFunction(void* f);
 		void setPhysicsUpdateFunction(void* f);
 		void setAnimator(Animator* a);
+		void setParent(GameObject* p);
+		void setExternalManager(void* manager);
 
 		/* Misc functions */
 		void updateCollider();
@@ -458,11 +386,25 @@ namespace engine {
 		float angularDragCoef;
 	};
 
+	struct engine_settings {
+		float fpsCap = 60;
+		float upsCap = 120;
+		sf::Uint32 windowMode = sf::Style::Titlebar | sf::Style::Close;
+		sf::Vector2u windowSize = sf::Vector2u(0,0);
+		bool enableWarnings = false;
+	};
+
+	class ENGINE_API AudioManager {
+		
+	};
+
 	/*
 		Game Engine - contains all the functions and data for a functioning engine
 	*/
 	class ENGINE_API Game {
 	private:
+		engine_settings settings;
+
 		/* Clocking and timing */
 		bool isActive = false;
 		long long tick = 0;
@@ -472,6 +414,7 @@ namespace engine {
 		long long lastUpdate = 0;
 		long long lastPhysicsUpdate = 0;
 		long long startTime;
+		long long calls = 0;
 		int frame = 0;
 		int tickCounter = 0;
 		long long lastSecond = 0;
@@ -489,7 +432,7 @@ namespace engine {
 
 		bool warningsEnabled = false;
 
-		float backgroundBrightness = 1.0f;
+		sf::Color backgroundColor = sf::Color(255,255,255);
 
 		// Keypress handling
 		bool showColliders = false;
@@ -507,19 +450,20 @@ namespace engine {
 		std::vector<PolygonCollider*> colliders = {};
 		std::vector<Renderable*> renderableObjects = {};
 		std::vector<Renderable*> uiRenderableObjects = {};
+		std::vector<void*> loadedMemRef = {};
 
 		// Gameobjects
 		unsigned int nextId = 1;
 		std::vector<GameObject*> gameObjects;
 
 		// Private functions
-		void init(float frameCap);
+		void init(engine_settings options);
 	public:
 		sf::RenderWindow* window;
 		PhysicsSettings physicsSettings;
 
 		// Constructors
-		Game(float fps, float ups, bool enableWarnings);
+		Game(engine_settings options);
 		virtual ~Game();
 
 		// Accessors
@@ -528,6 +472,7 @@ namespace engine {
 		bool isPaused();
 		sf::Vector2f getWindowSize();
 
+
 		// Time Accessors
 		float getTimescale();
 		long long getElapsedTime();
@@ -535,17 +480,17 @@ namespace engine {
 		long long getElapsedFrames();
 
 		// Get and set
-		void setBackgroundBrightness(float brightness);
+		void setBackgroundColor(sf::Color color);
 
 		// Camera functions
 		void setCamFocus(GameObject* obj);
 
 		// Game update and render functions
-		void update();
+		bool update();
 		void updateObjects();
 		void stopScene();
 		void resetScene();
-		void render();
+		bool render();
 		void start();
 
 		void invoke(void* func);
@@ -554,7 +499,7 @@ namespace engine {
 		void dynamicDeleteRenderable(Renderable* r);
 
 		// Sorting algorithms
-		std::vector<Renderable*> sortRenderables(std::vector<Renderable*> renders);
+		void sortRenderables(std::vector<Renderable*>* renders);
 
 		// UI draw functions
 		void* drawText(Text* text, bool isUI);
@@ -565,8 +510,8 @@ namespace engine {
 		void* drawCollider(PolygonCollider* col, bool registerThisCollider);
 		void registerCollider(PolygonCollider* col);
 		bool removeCollider(PolygonCollider* col);
-		void* drawTexture(Texture* texture, bool isUI);
-		bool removeTexture(Texture* texture);
+		void* drawTexture(LoadableTexture* texture, bool isUI);
+		bool removeTexture(LoadableTexture* texture);
 
 		// Render removal functions
 		bool removeFromRender(void* removePtr);
@@ -579,6 +524,7 @@ namespace engine {
 		GameObject* makeObject(int layer, floatPolygon polygon, bool toUI);
 		GameObject* makeObject(int layer, floatPolygon polygon, PolygonCollider* col, bool toUI);
 		GameObject* makeObject(int layer, float radius, bool toUI);
+		GameObject* makeObject(bool toUI);
 		GameObject* makeObject();
 		GameObject* registerObject(GameObject* obj, bool toUI);
 		GameObject* getObject(unsigned int targId);
@@ -595,39 +541,6 @@ namespace engine {
 		sf::Texture* loadTexture(std::string path);
 
 		// Controller
-		Controller controller;
-	};
-
-	struct ENGINE_API AnimationNode {
-		float delayFrames; // delay between this node and the next node in render frames
-		Texture* texture;
-		StrippedTransform animationOffset;
-	};
-
-	class ENGINE_API Animator {
-	private:
-		Game* engine;
-		ShapeComponent* shape;
-		float lastFrameStamp;
-		int animationPosition = 0;
-		std::vector<AnimationNode*> animation = {};
-	public:
-		Animator(Game* g, GameObject* p);
-
-		// Get functions
-		std::vector<AnimationNode*> getAnimation() { return animation; }
-
-		// Set functions
-		void setAnimation(std::vector<AnimationNode*> a) { animation = a; }
-
-		// Other vector functions
-		void deleteAnimation(int pos) { animation.erase(animation.begin() + pos); }
-		void appendAnimation(AnimationNode* node) { animation.push_back(node); }
-
-		// Positional Functions
-		void skipStep() { animationPosition = ++animationPosition % animation.size(); }
-		void rewindStep() { animationPosition = --animationPosition % animation.size(); }
-		void setNode(int newPos) { animationPosition = newPos; lastFrameStamp = engine->getElapsedFrames(); }
-		void updateAndRender();
+		Controller controller = Controller();
 	};
 }

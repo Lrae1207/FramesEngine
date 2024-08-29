@@ -66,6 +66,11 @@
 #define KEYCODEF12 sf::Keyboard::F12
 #define KEYCODEESC sf::Keyboard::Escape
 #define KEYCODESPACE sf::Keyboard::Space
+#define KEYCODEMOUSE0 sf::Mouse::Button::Left
+#define KEYCODEMOUSE1 sf::Mouse::Button::Right
+#define KEYCODEMOUSE2 sf::Mouse::Button::Middle
+#define KEYCODEMOUSE3 sf::Mouse::Button::XButton1
+#define KEYCODEMOUSE4 sf::Mouse::Button::XButton2
 
 /* Color macros */
 #define C_TRANS sf::Color(0,0,0,0)

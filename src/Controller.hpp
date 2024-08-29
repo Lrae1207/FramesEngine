@@ -3,11 +3,6 @@
 #include "DllBase.hpp"
 
 // Precompile later
-#include "SFML/Audio.hpp"
-#include "SFML/System.hpp"
-#include "SFML/Graphics.hpp"
-#include "SFML/Window.hpp"
-#include "SFML/Network.hpp"
 
 #include <map>
 
@@ -19,7 +14,9 @@
 class ENGINE_API Controller {
 private:
 	// This is a map containing all the needed inputs and whether they were pressed between the current and last update
-	std::map<sf::Keyboard::Key, bool> keyDownMap;
+	std::map<sf::Keyboard::Key, bool> keyDownMap = std::map<sf::Keyboard::Key, bool>();
+
+	bool mouseDown = false;
 
 	// Private functions
 public:
@@ -34,9 +31,12 @@ public:
 	// Get key down
 	bool getKeyDown(const sf::Keyboard::Key key);
 	bool getKeyUp(const sf::Keyboard::Key key);
+	bool getKeyDown(const sf::Mouse::Button button);
+	bool getKeyUp(const sf::Mouse::Button button);
 
 	void* mouseMoveHandler;
 	// Calls an external mouse update handler function
 	void handleMouseMove(const sf::Vector2i mousePos);
+	sf::Vector2f getMousePosition();
 	// Add key hold handling
 };
