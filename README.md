@@ -1,7 +1,7 @@
 # FramesEngine - In development
 A lightweight c++ game engine library based on SFML
 
-## Currently a Windows-only DLL but I plan to make a linux version aswell
+## Currently Windows-only but I plan to make a linux version aswell
 
 # The Basics
 
